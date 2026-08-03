@@ -1,38 +1,30 @@
-dependencies {
-    implementation("com.google.android.material:material:1.12.0")
-    implementation("androidx.recyclerview:recyclerview:1.3.2")
-}
-
-// Use an integer for version numbers
+// Plugin version. Bump this on each release you want CloudStream to offer as
+// an update. Must be an integer, not a semver string.
 version = 1
 
 cloudstream {
-    // All of these properties are optional, you can safely remove any of them.
-
-    description = "Lorem ipsum"
-    authors = listOf("Cloudburst", "Luna712")
+    description = "Generic IPTV provider. Loads channels from any M3U/M3U8 playlist URL."
+    authors = listOf("Tahiyatt")
 
     /**
-    * Status int as one of the following:
-    * 0: Down
-    * 1: Ok
-    * 2: Slow
-    * 3: Beta-only
-    **/
-    status = 1 // Will be 3 if unspecified
+     * Status codes the app understands:
+     * 0 = down, 1 = ok, 2 = slow, 3 = beta-only
+     */
+    status = 1
 
-    tvTypes = listOf("Movie")
+    // Must match the TvType your provider declares in supportedTypes.
+    // If "Live" is disabled in the app's content-type filter, the plugin hides.
+    tvTypes = listOf("Live")
 
-    requiresResources = true
+    // REQUIRED. A missing or mismatched language means the plugin never appears
+    // in the extensions list, with no error to explain why.
     language = "en"
 
-    // Random CC logo I found
-    iconUrl = "https://upload.wikimedia.org/wikipedia/commons/2/2f/Korduene_Logo.png"
+    iconUrl = "https://www.google.com/s2/favicons?domain=iptv-org.github.io&sz=%size%"
 }
 
-android {
-    buildFeatures {
-        buildConfig = true
-        viewBinding = true
-    }
+dependencies {
+    // JUnit 4 is the default for Android library modules. These tests run on the
+    // JVM via testDebugUnitTest, so no emulator or device is involved.
+    testImplementation("junit:junit:4.13.2")
 }
