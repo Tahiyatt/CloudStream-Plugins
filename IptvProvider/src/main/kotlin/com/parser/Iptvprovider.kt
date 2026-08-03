@@ -2,6 +2,7 @@ package com.parser
 
 import com.lagradost.cloudstream3.ErrorLoadingException
 import com.lagradost.cloudstream3.HomePageResponse
+import com.lagradost.cloudstream3.HomePageList
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.MainPageRequest
@@ -98,19 +99,53 @@ class IptvProvider : MainAPI() {
     // -----------------------------------------------------------------------
     // Browsing
     // -----------------------------------------------------------------------
-
+//
+//    override suspend fun getMainPage(
+//        page: Int,
+//        request: MainPageRequest,
+//    ): HomePageResponse {
+//        val items = channels().map { it.toSearchResponse() }
+//
+//        return newHomePageResponse(
+//            name = "All Channels",
+//            list = items,
+//            hasNext = false,
+//        )
+//    }
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        val items = channels().map { it.toSearchResponse() }
+        val all = channels()
 
-        return newHomePageResponse(
+        // A channel can carry several group-title values, so it may legitimately
+        // appear under more than one category.
+        val byCategory: Map<String, List<Channel>> = all
+            .flatMap { channel ->
+                CategoryMapper.categorize(channel.groupTitle).map { it to channel }
+            }
+            .groupBy({ it.first }, { it.second })
+
+        val lists = CategoryMapper.sortForDisplay(byCategory.keys)
+            .mapNotNull { category ->
+                val channels = byCategory[category].orEmpty()
+                if (channels.isEmpty()) return@mapNotNull null
+
+                HomePageList(
+                    name = category,
+                    list = channels.map { it.toSearchResponse() },
+                    isHorizontalImages = false,
+                )
+            }
+        val allChannelsList = HomePageList(
             name = "All Channels",
-            list = items,
-            hasNext = false,
+            list = all.map { it.toSearchResponse() },
+            isHorizontalImages = false,
         )
+
+        return newHomePageResponse(lists + allChannelsList, hasNext = false)
     }
+
 
     override suspend fun search(query: String): List<SearchResponse> =
         channels()
