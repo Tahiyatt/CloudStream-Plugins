@@ -20,7 +20,7 @@ cloudstream {
     // in the extensions list, with no error to explain why.
     language = "en"
 
-    iconUrl = "https://www.google.com/s2/favicons?domain=iptv-org.github.io&sz=%size%"
+//    iconUrl = "https://www.google.com/s2/favicons?domain=iptv-org.github.io&sz=%size%"
 }
 
 dependencies {
