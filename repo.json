@@ -1,0 +1,8 @@
+{
+  "name": "Bangla News Plugins",
+  "description": "Generic IPTV provider for CloudStream. Loads channels from any M3U/M3U8 playlist.",
+  "manifestVersion": 1,
+  "pluginLists": [
+    "https://raw.githubusercontent.com/Tahiyatt/CloudStream-Plugins/builds/plugins.json"
+  ]
+}
