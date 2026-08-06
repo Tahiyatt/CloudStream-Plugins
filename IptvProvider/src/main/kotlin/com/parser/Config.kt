@@ -15,6 +15,9 @@ object Config {
      * streams. This plugin ships no content; it only reads this playlist.
      */
     const val PLAYLIST_URL = "https://iptv-org.github.io/iptv/languages/ben.m3u"
+    const val STATUS_URL ="https://raw.githubusercontent.com/Tahiyatt/CloudStream-Plugins/builds/status.json"
+
+
 
     /** Name shown in CloudStream's provider list. */
     const val PROVIDER_NAME = "IPTV (Bengali)"

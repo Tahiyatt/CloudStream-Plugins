@@ -117,34 +117,57 @@ class IptvProvider : MainAPI() {
         request: MainPageRequest,
     ): HomePageResponse {
         val all = channels()
+        val status = StatusIndex.get()
+
+        // Suspect URLs stay in the normal rows on purpose. Only unambiguous
+        // evidence pulls a channel out of the categories — a false "dead"
+        // hides something that works, which is the worse error.
+        val (dead, live) = all.partition { it.streamUrl in status.dead }
 
         // A channel can carry several group-title values, so it may legitimately
         // appear under more than one category.
-        val byCategory: Map<String, List<Channel>> = all
+        val byCategory: Map<String, List<Channel>> = live
             .flatMap { channel ->
                 CategoryMapper.categorize(channel.groupTitle).map { it to channel }
             }
             .groupBy({ it.first }, { it.second })
 
-        val lists = CategoryMapper.sortForDisplay(byCategory.keys)
-            .mapNotNull { category ->
-                val channels = byCategory[category].orEmpty()
-                if (channels.isEmpty()) return@mapNotNull null
+        val lists = mutableListOf<HomePageList>()
 
-                HomePageList(
-                    name = category,
-                    list = channels.map { it.toSearchResponse() },
-                    isHorizontalImages = false,
-                )
-            }
-        val allChannelsList = HomePageList(
-            name = "All Channels",
-            list = all.map { it.toSearchResponse() },
-            isHorizontalImages = false,
-        )
+        CategoryMapper.sortForDisplay(byCategory.keys).forEach { category ->
+            val inCategory = byCategory[category].orEmpty()
+            if (inCategory.isEmpty()) return@forEach
 
-        return newHomePageResponse(lists + allChannelsList, hasNext = false)
+            lists += HomePageList(
+                name = category,
+                list = inCategory.map { it.toSearchResponse() },
+                isHorizontalImages = false,
+            )
+        }
+
+        // Full unfiltered list, live channels only.
+        if (live.isNotEmpty()) {
+            lists += HomePageList(
+                name = "All Channels",
+                list = live.map { it.toSearchResponse() },
+                isHorizontalImages = false,
+            )
+        }
+
+        // Dead channels are shown, not dropped. A stream that 404s today may
+        // return next week, and a visible "Unavailable" row tells the user the
+        // plugin knows — rather than looking like channels vanished at random.
+        if (dead.isNotEmpty()) {
+            lists += HomePageList(
+                name = "Unavailable",
+                list = dead.map { it.toSearchResponse() },
+                isHorizontalImages = false,
+            )
+        }
+
+        return newHomePageResponse(lists, hasNext = false)
     }
+
 
 
     override suspend fun search(query: String): List<SearchResponse> =
@@ -177,7 +200,7 @@ class IptvProvider : MainAPI() {
     ): Boolean {
         val channel = decodeChannel(data)
 
-        if (isDefinitelyOffline(channel.streamUrl)) {
+        if (probe(channel.streamUrl) == Verdict.DEAD) {
             throw ErrorLoadingException(
                 "${channel.name} appears to be offline. " +
                         "Community playlists often contain streams that have stopped broadcasting."
@@ -193,6 +216,10 @@ class IptvProvider : MainAPI() {
             ) {
                 this.referer = ""
                 this.quality = Qualities.Unknown.value
+                this.headers = mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+                )
             }
         )
 
@@ -212,17 +239,49 @@ class IptvProvider : MainAPI() {
      * ambiguous fall through and let the player decide, which is the behaviour
      * that was already working before this check existed.
      */
-    private suspend fun isDefinitelyOffline(streamUrl: String): Boolean = try {
-        val response = app.get(streamUrl, timeout = STREAM_PROBE_TIMEOUT_SECONDS)
-        response.code in DEFINITELY_GONE_CODES
-    } catch (e: Exception) {
-        // Could not tell. Assume playable rather than blocking a live channel.
-        false
-    }
+
 
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
+
+    /** Outcome of an on-device stream probe. */
+    private enum class Verdict { DEAD, UNKNOWN }
+
+    /**
+     * Cheap on-device liveness check, run just before playback.
+     *
+     * Two rungs only. The full probe ladder — segment fetches, master playlist
+     * resolution — belongs in CI, where bandwidth and latency are free.
+     *
+     * Returns [Verdict.UNKNOWN] for anything ambiguous, which means "hand it to
+     * the player anyway". Timeouts, 403s and connection errors all land here:
+     * many live streams reject probe requests while playing fine, so treating
+     * every unhappy response as death would break working channels.
+     */
+    private suspend fun probe(url: String): Verdict {
+        val response = try {
+            app.get(url, timeout = STREAM_PROBE_TIMEOUT_SECONDS)
+        } catch (e: Exception) {
+            return Verdict.UNKNOWN
+        }
+
+        // Rung 1: status codes that mean the resource is genuinely gone.
+        if (response.code == 404 || response.code == 410) return Verdict.DEAD
+
+        // Rung 2: a 200 that isn't a manifest. Usually an HTML login or error
+        // page served with a success code — a large share of real deaths that
+        // status codes alone miss.
+        val body = try {
+            response.text.trimStart()
+        } catch (e: Exception) {
+            return Verdict.UNKNOWN
+        }
+
+        if (body.isNotEmpty() && !body.startsWith("#EXTM3U")) return Verdict.DEAD
+
+        return Verdict.UNKNOWN
+    }
 
     /**
      * Decodes the JSON payload carried in a CloudStream item URL.
@@ -262,6 +321,6 @@ class IptvProvider : MainAPI() {
          * excluded on purpose: streams commonly return it to probe requests and
          * then play normally.
          */
-        val DEFINITELY_GONE_CODES = setOf(404, 410)
+
     }
 }
